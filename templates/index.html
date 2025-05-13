@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Room Detection</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .video-feed {
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .metrics-panel {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .detection-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .control-panel {
+            margin: 20px 0;
+        }
+        .status-indicator {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-active {
+            background-color: #28a745;
+        }
+        .status-inactive {
+            background-color: #dc3545;
+        }
+        .room-zones {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        .zone {
+            flex: 1;
+            padding: 10px;
+            margin: 0 5px;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .interaction-list {
+            max-height: 150px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        .interaction-item {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <h1 class="text-center mb-4">Smart Room Detection System</h1>
+        
+        <div class="row">
+            <div class="col-md-8">
+                <div class="video-container">
+                    <img src="{{ url_for('video_feed') }}" class="video-feed" id="videoFeed">
+                </div>
+                
+                <div class="control-panel text-center">
+                    <button class="btn btn-primary me-2" id="startBtn">Start Detection</button>
+                    <button class="btn btn-danger" id="stopBtn">Stop Detection</button>
+                </div>
+
+                <div class="room-zones">
+                    <div class="zone" id="leftZone">
+                        <h5>Left Zone</h5>
+                        <div class="zone-content"></div>
+                    </div>
+                    <div class="zone" id="centerZone">
+                        <h5>Center Zone</h5>
+                        <div class="zone-content"></div>
+                    </div>
+                    <div class="zone" id="rightZone">
+                        <h5>Right Zone</h5>
+                        <div class="zone-content"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="metrics-panel">
+                    <h4>System Status</h4>
+                    <p>
+                        <span class="status-indicator status-inactive" id="statusIndicator"></span>
+                        <span id="statusText">Inactive</span>
+                    </p>
+                    
+                    <h4>Performance Metrics</h4>
+                    <div id="metrics">
+                        <p>FPS: <span id="fps">0</span></p>
+                        <p>Processing Time: <span id="processingTime">0</span> ms</p>
+                    </div>
+                    
+                    <h4>Detected Objects</h4>
+                    <div class="detection-list" id="detectionList">
+                        <!-- Detections will be populated here -->
+                    </div>
+
+                    <h4>Recent Interactions</h4>
+                    <div class="interaction-list" id="interactionList">
+                        <!-- Interactions will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let isRunning = false;
+        const socket = io();
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const fpsElement = document.getElementById('fps');
+        const processingTimeElement = document.getElementById('processingTime');
+        const detectionList = document.getElementById('detectionList');
+        const interactionList = document.getElementById('interactionList');
+        const leftZone = document.getElementById('leftZone').querySelector('.zone-content');
+        const centerZone = document.getElementById('centerZone').querySelector('.zone-content');
+        const rightZone = document.getElementById('rightZone').querySelector('.zone-content');
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        socket.on('room_analysis', (data) => {
+            updateRoomAnalysis(data);
+        });
+
+        function updateRoomAnalysis(data) {
+            // Update zones
+            if (data.layout && data.layout.zones) {
+                leftZone.innerHTML = data.layout.zones.left.map(obj => 
+                    `<div class="badge bg-info me-1 mb-1">${obj}</div>`
+                ).join('');
+                centerZone.innerHTML = data.layout.zones.center.map(obj => 
+                    `<div class="badge bg-info me-1 mb-1">${obj}</div>`
+                ).join('');
+                rightZone.innerHTML = data.layout.zones.right.map(obj => 
+                    `<div class="badge bg-info me-1 mb-1">${obj}</div>`
+                ).join('');
+            }
+
+            // Update interactions
+            if (data.interactions) {
+                interactionList.innerHTML = data.interactions.map(interaction => `
+                    <div class="interaction-item">
+                        <strong>${interaction.type}</strong>: ${interaction.objects.join(', ')}
+                    </div>
+                `).join('');
+            }
+
+            // Update metrics
+            if (data.metrics) {
+                fpsElement.textContent = data.metrics.fps;
+                processingTimeElement.textContent = (data.metrics.avg_processing_time * 1000).toFixed(2);
+                updateDetectionList(data.metrics.detection_counts);
+            }
+        }
+
+        function updateDetectionList(detections) {
+            detectionList.innerHTML = '';
+            for (const [object, count] of Object.entries(detections)) {
+                const item = document.createElement('div');
+                item.className = 'd-flex justify-content-between align-items-center mb-2';
+                item.innerHTML = `
+                    <span>${object}</span>
+                    <span class="badge bg-primary">${count}</span>
+                `;
+                detectionList.appendChild(item);
+            }
+        }
+
+        function updateStatus(running) {
+            isRunning = running;
+            statusIndicator.className = `status-indicator ${running ? 'status-active' : 'status-inactive'}`;
+            statusText.textContent = running ? 'Active' : 'Inactive';
+            startBtn.disabled = running;
+            stopBtn.disabled = !running;
+        }
+
+        startBtn.addEventListener('click', () => {
+            fetch('/start_detection')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateStatus(true);
+                    }
+                })
+                .catch(error => console.error('Error starting detection:', error));
+        });
+
+        stopBtn.addEventListener('click', () => {
+            fetch('/stop_detection')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateStatus(false);
+                    }
+                })
+                .catch(error => console.error('Error stopping detection:', error));
+        });
+
+        // Initial status
+        updateStatus(false);
+    </script>
+</body>
+</html> 
